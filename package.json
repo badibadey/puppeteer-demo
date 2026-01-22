@@ -1,0 +1,25 @@
+{
+  "name": "puppeteer-n8n-demo",
+  "version": "1.0.0",
+  "description": "Demo integracji Puppeteer z n8n - scraper wysyłający dane przez webhook",
+  "main": "scraper-with-n8n.js",
+  "scripts": {
+    "start": "node scraper-with-n8n.js"
+  },
+  "keywords": [
+    "puppeteer",
+    "n8n",
+    "scraper",
+    "webhook",
+    "automation"
+  ],
+  "author": "IvoryLab",
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.91.0",
+    "dotenv": "^17.2.3",
+    "puppeteer": "^21.0.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}

@@ -1,0 +1,79 @@
+Skanowanie / Scraping według słów kluczowych GRUP na FB
+
+Świadczymy usługi w zakresie legalizacji pobytu cudzoziemców na terenie RP, jak również usługi tłumaczeń, oraz tak zwanych „szybkich usług” – uzyskanie PESEL, wymiana Prawa Jazdy i im podobnych. 
+W celu poszukiwania klientów potrzebujemy rozwiązania, które pozwoli na wyszukiwanie potencjalnych klientów w tematycznych grupach (listę grup posiadamy) na Facebook według słów kluczowych w postach (listę słów według tematów posiadamy).  
+
+WYMAGANIA FUNKCJONALNOŚCI:
+Skrapowanie i zapisywanie do BD wszystkich postów; 
+Wyszukiwanie słów kluczowych w treści postów tekstowych; 
+OCR-owanie postów w postaci grafiki do tekstu i wyszukiwanie w nich słów kluczowych; 
+Skrapowanie tylko nowych postów, czyli co jakiś czas skrapowanie wstecz do ostatniego znanego postu; 
+Wyszukiwanie z interwalem 10 – 15 minut; 
+Możliwość ręcznego ustawienia interwalu osobno dla każdej Grupy; 
+Możliwość dodawania nowych grup; 
+Możliwość zawieszenia / usunięcia ze skanowania poszczególnej grupy; 
+Słowa Kluczowe: 
+Grupowanie słów kluczowych po tematyce / usłudze;
+Możliwość ustawienia:
+Wszystkie tematy dla wszystkich grup; 
+Dla każdej z grup możliwość wyboru osobnej tematyki oraz osobnych słów kluczowych; 
+
+Statystyki / Zapisywanie do bazy danych:
+Wszystkich przeanalizowanych postów;
+Sortowane po Grupach;
+Lista członków grupy na chwilę utworzenia postu; 
+Temat Postu;
+Autor postu z linkiem do profilu;
+Wszystkie komentarze w ich kolejności; 
+Sortowane po Temacie Postu: 
+Interesujące nas;
+Poza naszym zainteresowaniem, ale z informacją o temacie postu; 
+Możliwość dodania nowych tematów do odfiltrowania;
+
+PANEL / GUI / DASHBOARD:
+
+PANEL DLA PRACOWNIKA:
+Interfejs w rodzaju Chrome z zakładkami według tematu / słów kluczowych; 
+Do tych zakładek trafiają wszystkie posty według tematów, z zaznaczeniem „nie opracowane”; 
+Jedna „zakładka” – aktualne, jeszcze nie opracowane posty; 
+Posty prezentowane w postaci prostokąt-u z małym bocznym panelem przy każdym z nich w którym mamy przyciski:
+Kopiuj do schowka link / url danego postu;
+Kopiuj do schowka szablon tekstu komentarza do danego tematu;
+Kopiuj do schowka komentarz jako plik graficzny – .jpg / .png (wcześniej przygotowany i dostosowany do danego tematu);
+Link do postu pracownik wkleja do innej przeglądarki, gdzie jest zalogowany na odpowiednie konto komentatora / naszej strony na FB.
+Po skopiowaniu powyższych danych pojawia się przycisk do kliknięcia „opracowano” i post znika z panelu „nie opracowane”, oraz we właściwej tematycznej zakładce też zostaję oznaczony jako „opracowany”; 
+Dostęp do własnych statystyk i ich analizy; 
+Możliwość „przesłania / udostępnienia” wewnątrz programu do „dopracowania” poszczególnego postu do innego, „wyspecjalizowanego” tematycznie pracownika; 
+
+PANEL ADMINISTRATORA: 
+Wszystko to samo, co w panelu pracownika oraz dodatkowo:
+Możliwość: 
+Dodania / zawieszenia / usunięcia pracownika; 
+Przydzielenia poszczególnym pracownikom odpowiednich grup / tematów; 
+Ustawienia widoczności postów „tylko swoje” „swoje oraz innych (z wyborem poszczególnych lub wszystkich” – nadanie statusu „Zaawansowanego Użytkownika”;  
+Oddelegowania poszczególnego postu do innego pracownika; 
+Możliwość dodawania / usuwania / zawieszenia ze skanowania nowych grup;
+Dostęp do rozszerzonych statystyk; 
+
+PANEL TECHNICZNY / SUPER ADMIN 
+Dostęp do ustawień programu na poziomie bardzo zaawansowanym – z dostępem do kodu;
+Ustawienia dostępu do API ewentualnych zewnętrznych programów / platform;
+Dostęp do tworzenia i zarządzania kontami Administratorów ; 
+Nadawania im uprawnień do dodania / zawieszenia / usunięcia pracownika; 
+
+WYMAGANIA TECHNICZNE
+W fazie testów / rozwoju – jak najbardziej może to być rozwiązanie w całości oparte na już istniejące rozwiązania chmurowe / istniejące serwisy;
+Docelowo – mocny nacisk na własny fizyczny serwer, w ostateczności – coś w rodzaju web hostingu, ale też jako okres przejściowy; 
+W wyniku końcowym – wszystkie, a co najmniej kluczowe procesy powinny odbywać się na naszych mocach przerobowych, jak z powodów oszczędności, tak i z powodów niezawodności oraz bezpieczeństwa danych, w tym ewentualnych danych osobowych. 
+
+WERSJA MINIMUM – jako tymczasowe rozwiązanie
+Dane rozwiązanie na etapie rozwoju – czyli wersja minimum może: 
+Polegać na plugin-ach do Chrom / Firefox lu dowolnej innej przeglądarki; 
+Może być zbudowane na zewnętrznych serwisach typu: Apify / Zenrows, Supabase, WeWeb i im podobnym; 
+Może być produktem, odpalanym na naszym lokalnym PC:
+Poniżej przykłady takich zagadnięć na platformach typu reddit / github:
+https://www.reddit.com/r/webdev/comments/1bgt0uq/scraping_facebook_impossible/?tl=ru
+https://github.com/Skyvern-AI/skyvern
+https://pptr.dev/ 
+W ostateczności, dla przetestowania pomysłu i zachowania FB – https://manus.im/ zakładka Web Scraping: 
+Ustawienie danego rozwiązania na potrzeby testów. 

@@ -1,0 +1,65 @@
+{
+    "categories": {
+        "legalizacja": {
+            "keywords": [
+                "karta pobytu",
+                "visa",
+                "zezwolenie na pobyt",
+                "legalizacja",
+                "residence card",
+                "work permit"
+            ],
+            "responseTemplate": "Dzień dobry! Pomagamy w legalizacji pobytu..."
+        },
+        "tlumaczenia": {
+            "keywords": [
+                "tłumacz",
+                "tłumaczenie",
+                "przysięgły",
+                "certified translation"
+            ],
+            "responseTemplate": "Oferujemy usługi tłumaczeń przysięgłych..."
+        },
+        "uczelnie": {
+            "keywords": [
+                "studia",
+                "rekrutacja",
+                "uniwersytet",
+                "legitymacja"
+            ],
+            "responseTemplate": "Pomagamy w rekrutacji na studia..."
+        },
+        "pesel": {
+            "keywords": [
+                "pesel",
+                "prawo jazdy",
+                "wymiana prawa jazdy",
+                "numer pesel"
+            ],
+            "responseTemplate": "Pomagamy w uzyskaniu numeru PESEL..."
+        },
+        "testowe_ogolne": {
+            "keywords": [
+                "i",
+                "w",
+                "z",
+                "na",
+                "do",
+                "jak",
+                "gdzie",
+                "co",
+                "prosze",
+                "pomoc",
+                "kto",
+                "kiedy",
+                "czy",
+                "się",
+                "jest",
+                "są",
+                "mam",
+                "szukam"
+            ],
+            "responseTemplate": "To jest kategoria testowa łapiąca prawie wszystko."
+        }
+    }
+}

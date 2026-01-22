@@ -1,0 +1,158 @@
+{
+    "name": "Scraper Demo - Multi-Group + Drive + Sheets",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "scraper-demo",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "id": "webhook-node",
+            "name": "Webhook - Odbierz Dane",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                240,
+                300
+            ],
+            "webhookId": "scraper-demo"
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Pobierz dane z inputu\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const data = item.json.body || item.json;\n  \n  // Przygotuj JSON output (przepisz wszystko z Puppeteer)\n  const outputJson = {\n    ...data,\n    processedAt: new Date().toISOString(),\n    status: 'new'\n  };\n  \n  // Przygotuj binary jeśli mamy screenshot\n  let binaryData = {};\n  \n  if (data.screenshot && data.screenshot.base64) {\n    const imageBuffer = Buffer.from(data.screenshot.base64, 'base64');\n    binaryData.screenshot = await this.helpers.prepareBinaryData(\n      imageBuffer,\n      data.screenshot.filename || 'screenshot.png',\n      'image/png'\n    );\n  }\n  \n  results.push({\n    json: outputJson,\n    binary: binaryData\n  });\n}\n\nreturn results;"
+            },
+            "id": "code-node",
+            "name": "Code - Przygotuj Binary",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                460,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "binaryData": true,
+                "name": "={{ $json.screenshot.filename }}",
+                "resolveData": true,
+                "options": {}
+            },
+            "id": "google-drive-node",
+            "name": "Google Drive - Upload",
+            "type": "n8n-nodes-base.googleDrive",
+            "typeVersion": 3,
+            "position": [
+                680,
+                300
+            ],
+            "credentials": {
+                "googleDriveOAuth2Api": {
+                    "id": "",
+                    "name": "Google Drive account"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "operation": "append",
+                "sheetId": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": ""
+                },
+                "range": "A:G",
+                "options": {}
+            },
+            "id": "google-sheets-node",
+            "name": "Google Sheets - Zapisz Lead",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.5,
+            "position": [
+                900,
+                300
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "",
+                    "name": "Google Sheets account"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "options": {}
+            },
+            "id": "response-node",
+            "name": "Respond to Webhook",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1,
+            "position": [
+                1120,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "content": "## ⚠️ Konfiguracja Demo\n\n1. **Google Drive**:\n   - Ustaw Credentials\n   - Node zwróci `webViewLink`\n\n2. **Google Sheets**:\n   - Ustaw Credentials\n   - Wybierz Arkusz (SheetId)\n   - Mapuj kolumny:\n     - Data: `{{ $json.postedAt }}`\n     - Grupa: `{{ $json.groupName }}`\n     - Autor: `{{ $json.author }}`\n     - Tytuł: `{{ $json.title }}`\n     - Link Post: `{{ $json.url }}`\n     - Screenshot: `{{ $json.webViewLink }}`",
+                "height": 360,
+                "width": 340
+            },
+            "id": "sticky-note",
+            "name": "Instrukcja Konfiguracji",
+            "type": "n8n-nodes-base.stickyNote",
+            "typeVersion": 1,
+            "position": [
+                680,
+                520
+            ]
+        }
+    ],
+    "connections": {
+        "Webhook - Odbierz Dane": {
+            "main": [
+                [
+                    {
+                        "node": "Code - Przygotuj Binary",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Code - Przygotuj Binary": {
+            "main": [
+                [
+                    {
+                        "node": "Google Drive - Upload",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Google Drive - Upload": {
+            "main": [
+                [
+                    {
+                        "node": "Google Sheets - Zapisz Lead",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Google Sheets - Zapisz Lead": {
+            "main": [
+                [
+                    {
+                        "node": "Respond to Webhook",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    }
+}

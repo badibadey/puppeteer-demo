@@ -1,0 +1,16 @@
+{
+    "group": {
+        "url": "https://www.facebook.com/groups/mywpolsce",
+        "name": "mywpolsce"
+    },
+    "n8n": {
+        "webhookUrl": "https://n8n-ivorylab.pl/webhook/fb-scraper"
+    },
+    "safety": {
+        "maxPostsPerSession": 15,
+        "intervalMinutes": 15,
+        "activeHoursStart": 8,
+        "activeHoursEnd": 22,
+        "humanDelaysConfig": "default"
+    }
+}

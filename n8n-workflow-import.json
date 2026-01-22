@@ -1,0 +1,163 @@
+{
+  "name": "Scraper Demo - Puppeteer Integration",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "scraper-demo",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-node",
+      "name": "Webhook - Odbierz z Puppeteer",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "scraper-demo"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Pobierz dane z inputu\nconst items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Przygotuj JSON output\n  const outputJson = {\n    scrollNumber: data.scrollNumber,\n    totalScrolls: data.totalScrolls,\n    timestamp: data.timestamp,\n    sourceUrl: data.sourceUrl,\n    pageTitle: data.pageTitle,\n    viewportWidth: data.viewport?.width,\n    viewportHeight: data.viewport?.height,\n    screenshotFilename: data.screenshot?.filename,\n    hasScreenshot: !!data.screenshot?.base64,\n    screenshotSize: data.screenshot?.base64?.length || 0,\n    processedAt: new Date().toISOString(),\n    status: 'received'\n  };\n  \n  // Przygotuj binary jeśli mamy screenshot\n  let binaryData = {};\n  \n  if (data.screenshot?.base64) {\n    // Dekoduj base64 do Buffer\n    const imageBuffer = Buffer.from(data.screenshot.base64, 'base64');\n    \n    // Użyj helpera n8n do przygotowania binary data\n    binaryData.screenshot = await this.helpers.prepareBinaryData(\n      imageBuffer,\n      data.screenshot.filename || 'screenshot.png',\n      'image/png'\n    );\n  }\n  \n  results.push({\n    json: outputJson,\n    binary: binaryData\n  });\n}\n\nreturn results;"
+      },
+      "id": "code-node",
+      "name": "Code - Przetwórz dane",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "response-node",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Nr": "={{ $json.scrollNumber }}",
+            "Timestamp": "={{ $json.timestamp }}",
+            "URL": "={{ $json.sourceUrl }}",
+            "Tytuł": "={{ $json.pageTitle }}",
+            "Plik": "={{ $json.screenshotFilename }}",
+            "Status": "={{ $json.status }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "sheets-node",
+      "name": "Google Sheets - Zapisz",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        680,
+        480
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "fileName": "=/screenshots/{{ $json.screenshotFilename }}",
+        "dataPropertyName": "screenshot"
+      },
+      "id": "file-node",
+      "name": "Write File - Zapisz screenshot",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        680,
+        120
+      ],
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "content": "## 📋 Jak używać tego workflow?\n\n### 1. Webhook\n- URL: `/webhook/scraper-demo`\n- Metoda: POST\n- Puppeteer wysyła tu screenshoty\n\n### 2. Code\n- Przetwarza dane JSON\n- Konwertuje base64 → binary\n- Używa `this.helpers.prepareBinaryData()`\n\n### 3. Respond to Webhook\n- Odpowiada Puppeteer\n\n### 4-5. WYŁĄCZONE nody\n- Włącz je w razie potrzeby",
+        "height": 340,
+        "width": 300
+      },
+      "id": "sticky-note",
+      "name": "Instrukcja",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        880,
+        120
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook - Odbierz z Puppeteer": {
+      "main": [
+        [
+          {
+            "node": "Code - Przetwórz dane",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Przetwórz dane": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Google Sheets - Zapisz",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Write File - Zapisz screenshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "scraper"
+    },
+    {
+      "name": "demo"
+    }
+  ],
+  "triggerCount": 0,
+  "pinData": {}
+}
