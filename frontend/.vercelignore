@@ -1,0 +1,5 @@
+# Pliki które Vercel ma ignorować
+.env.local
+.env*.local
+node_modules
+.next
