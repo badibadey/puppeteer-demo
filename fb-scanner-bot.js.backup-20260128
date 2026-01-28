@@ -1,5 +1,4 @@
-const AccountManager = require("./lib/account-manager");
-const puppeteer = require('puppeteer-extra');
+const AccountManager = require("./lib/account-manager");const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs');
 const path = require('path');
@@ -612,9 +611,7 @@ async function runSingleSession(targetGroup, coordinator = null) {
             puppeteerOptions = await proxyManager.configurePuppeteerWithProxy(puppeteerOptions, proxy);
         }
 
-        // 🆕 Browser isolation - użyj opcji z konta
-        const browserOptions = accountManager.getBrowserOptions(scannerAccount, puppeteerOptions);
-        browser = await puppeteer.launch(browserOptions);
+        browser = await puppeteer.launch(puppeteerOptions);
         const page = await browser.newPage();
 
         // Aplikuj fingerprint urządzenia

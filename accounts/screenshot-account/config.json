@@ -1,0 +1,32 @@
+{
+    "accountType": "screenshot",
+    "accountName": "screenshot-account",
+    "accountDescription": "Konto do robienia screenshotów postów",
+    "facebookProfile": {
+        "email": "screenshot@example.com",
+        "name": "screenshot-account"
+    },
+    "paths": {
+        "session": "../accounts/screenshot-account/fb-session",
+        "cache": "../accounts/screenshot-account/cache",
+        "learning": "../accounts/screenshot-account/learning-data",
+        "screenshots": "../accounts/screenshot-account/screenshots",
+        "browserProfile": "../accounts/screenshot-account/browser-profile",
+        "logs": "../accounts/screenshot-account/logs"
+    },
+    "capabilities": [
+        "scraping",
+        "processing"
+    ],
+    "browserConfig": {
+        "headless": false,
+        "windowSize": { "width": 1366, "height": 768 },
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+    },
+    "settings": {
+        "maxSessionsPerHour": 10,
+        "maxPostsPerSession": 25,
+        "enableScreenshots": true,
+        "enableLearning": true
+    }
+}

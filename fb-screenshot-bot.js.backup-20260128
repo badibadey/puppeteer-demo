@@ -1,5 +1,4 @@
-const AccountManager = require("./lib/account-manager");
-console.log('✅ Loaded fb-screenshot-bot.js V2 (Updated)');
+const AccountManager = require("./lib/account-manager");console.log('✅ Loaded fb-screenshot-bot.js V2 (Updated)');
 require('dotenv').config();
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
@@ -17,8 +16,7 @@ puppeteer.use(StealthPlugin());
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://xyz.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'xyz';
-
-// 🆕 Account manager dla multi-account
+// Dynamic paths from account manager
 const accountManager = new AccountManager();
 const screenshotAccount = accountManager.getScreenshotAccount();
 if (!screenshotAccount) {
@@ -32,6 +30,7 @@ if (!fs.existsSync(SCREENSHOTS_DIR)) {
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
 /**
  * Ładuje ciasteczka (tym razem wewnątrz bota)
  */
@@ -171,8 +170,7 @@ async function runScreenshotBot() {
     console.log('📸 Uruchamiam FB Screenshot Bot...');
     console.log('   Czekam na zadania w Supabase...');
 
-    // 🆕 Browser isolation - użyj opcji z konta
-    const browserOptions = accountManager.getBrowserOptions(screenshotAccount, {
+    const browser = await puppeteer.launch({
         executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
         headless: false, // FALSE: mniejsza szansa na checkpoint/ban (realistyczne)
         args: [

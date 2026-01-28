@@ -1,5 +1,4 @@
-const AccountManager = require("./lib/account-manager");
-const puppeteer = require('puppeteer-extra');
+const AccountManager = require("./lib/account-manager");const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fs = require('fs');
 const path = require('path');
@@ -34,14 +33,7 @@ puppeteer.use(StealthPlugin());
 const CONFIG = require('./config/scraper.json');
 const KEYWORDS = require('./config/keywords.json');
 
-// Dynamic paths from account manager
-const accountManager = new AccountManager();
-const scannerAccount = accountManager.getScannerAccount();
-if (!scannerAccount) {
-    console.error("❌ Nie znaleziono konfiguracji scanner-account");
-    process.exit(1);
-}
-const SESSION_PATH = path.join(__dirname, scannerAccount.paths.session, 'cookies.json');
+const SESSION_PATH = path.join(__dirname, 'fb-session', 'cookies.json');
 
 /**
  * Losuje grupę docelową z dostępnej puli
@@ -612,9 +604,7 @@ async function runSingleSession(targetGroup, coordinator = null) {
             puppeteerOptions = await proxyManager.configurePuppeteerWithProxy(puppeteerOptions, proxy);
         }
 
-        // 🆕 Browser isolation - użyj opcji z konta
-        const browserOptions = accountManager.getBrowserOptions(scannerAccount, puppeteerOptions);
-        browser = await puppeteer.launch(browserOptions);
+        browser = await puppeteer.launch(puppeteerOptions);
         const page = await browser.newPage();
 
         // Aplikuj fingerprint urządzenia

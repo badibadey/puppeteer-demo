@@ -1,0 +1,4 @@
+# Ignore all browser profile data
+*
+# But track this .gitignore file
+!.gitignore

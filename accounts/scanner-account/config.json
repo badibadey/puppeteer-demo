@@ -1,0 +1,32 @@
+{
+    "accountType": "scanner",
+    "accountName": "scanner-account",
+    "accountDescription": "Główne konto do skanowania grup Facebooka",
+    "facebookProfile": {
+        "email": "scanner@example.com",
+        "name": "scanner-account"
+    },
+    "paths": {
+        "session": "../accounts/scanner-account/fb-session",
+        "cache": "../accounts/scanner-account/cache",
+        "learning": "../accounts/scanner-account/learning-data",
+        "screenshots": "../accounts/scanner-account/screenshots",
+        "browserProfile": "../accounts/scanner-account/browser-profile",
+        "logs": "../accounts/scanner-account/logs"
+    },
+    "capabilities": [
+        "scraping",
+        "processing"
+    ],
+    "browserConfig": {
+        "headless": false,
+        "windowSize": { "width": 1366, "height": 768 },
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+    },
+    "settings": {
+        "maxSessionsPerHour": 10,
+        "maxPostsPerSession": 25,
+        "enableScreenshots": true,
+        "enableLearning": true
+    }
+}
