@@ -18,6 +18,8 @@ const CacheManager = require('./lib/cache-manager');
 const BehavioralLearning = require('./lib/behavioral-learning');
 const RiskPrediction = require('./lib/risk-prediction');
 const StatefulScanner = require('./lib/stateful-scanner');
+const FaultTolerance = require('./lib/fault-tolerance');
+const DistributedCoordinator = require('./lib/distributed-coordinator');
 
 // Supabase client
 const { createClient } = require('@supabase/supabase-js');
@@ -179,6 +181,7 @@ async function scrapeFacebook(page, targetGroup = null) {
     const behavioralLearning = new BehavioralLearning('./learning-data');
     const riskPrediction = new RiskPrediction();
     const statefulScanner = new StatefulScanner(supabase, CONFIG);
+    const faultTolerance = new FaultTolerance(CONFIG.faultTolerance || {});
 
     // 1. Inicjalizuj Stateful Scanner
     try {
@@ -188,15 +191,16 @@ async function scrapeFacebook(page, targetGroup = null) {
         console.log('⚠️ Kontynuowanie bez stateful scanning...');
     }
 
-    // 2. Czekaj na feed i zrób wstępny scroll
-    try {
-        await page.waitForSelector('[role="feed"]', { timeout: 15000 });
-        console.log('   ✅ Feed znaleziony');
-    } catch (e) {
-        console.log('⚠️ Nie znaleziono feedu (timeout). Sprawdzam bana...');
-        if (await checkBanRisk(page)) return;
-        return;
-    }
+    // 2. Czekaj na feed i zrób wstępny scroll z Fault Tolerance
+    await faultTolerance.executeWithRetry(async () => {
+        try {
+            await page.waitForSelector('[role="feed"]', { timeout: 15000 });
+            console.log('   ✅ Feed znaleziony');
+        } catch (e) {
+            console.log('⚠️ Nie znaleziono feedu (timeout). Sprawdzam bana...');
+            if (await checkBanRisk(page)) throw new Error('Ban detected');
+        }
+    }, 'feed_detection', { groupName });
 
     // 2. Wykonaj losową ścieżkę nawigacji
     await performRandomNavigation(page);
@@ -330,49 +334,53 @@ async function scrapeFacebook(page, targetGroup = null) {
                 continue;
             }
 
-            // Stateful Scanning - przetwarzaj post
-            const result = await statefulScanner.processPost(
-                groupName, 
-                postData.externalId, 
-                postData, 
-                async (data) => {
-                    // Analiza słów kluczowych
-                    const matchResult = matchKeywords(data.textContent);
+            // Stateful Scanning - przetwarzaj post z Fault Tolerance
+            const result = await faultTolerance.executeWithRetry(async () => {
+                return await statefulScanner.processPost(
+                    groupName, 
+                    postData.externalId, 
+                    postData, 
+                    async (data) => {
+                        // Analiza słów kluczowych
+                        const matchResult = matchKeywords(data.textContent);
 
-                    if (matchResult.matched) {
-                        console.log(`   🎯 TRAFIENIE: [${data.author}] "${data.title}"`);
-                        console.log(`      Keywords: ${matchResult.keywords.join(', ')}`);
+                        if (matchResult.matched) {
+                            console.log(`   🎯 TRAFIENIE: [${data.author}] "${data.title}"`);
+                            console.log(`      Keywords: ${matchResult.keywords.join(', ')}`);
 
-                        // Wyślij do n8n
-                        await sendToN8n({
-                            source: 'Facebook Group',
-                            groupName: groupName,
-                            ...data,
-                            post_url: data.url,
-                            content: data.textContent,
-                            matchedKeywords: matchResult.keywords,
-                            category: matchResult.category,
-                            scrapedAt: new Date().toISOString()
-                        });
+                            // Wyślij do n8n z Fault Tolerance
+                            await faultTolerance.executeWithRetry(async () => {
+                                await sendToN8n({
+                                    source: 'Facebook Group',
+                                    groupName: groupName,
+                                    ...data,
+                                    post_url: data.url,
+                                    content: data.textContent,
+                                    matchedKeywords: matchResult.keywords,
+                                    category: matchResult.category,
+                                    scrapedAt: new Date().toISOString()
+                                });
+                            }, 'send_to_n8n', { postId: data.externalId });
 
-                        // Symuluj czytanie po znalezieniu
-                        await idleBehaviors.simulateReading(2000);
+                            // Symuluj czytanie po znalezieniu
+                            await idleBehaviors.simulateReading(2000);
+                            
+                            // Losowy błąd po znalezieniu (ekscytacja?)
+                            await errorSimulation.simulateRandomError();
+                            
+                            // Rejestruj sukces w systemie uczenia się
+                            behavioralLearning.recordSuccess('keyword_match', {
+                                keywords: matchResult.keywords,
+                                category: matchResult.category
+                            });
+                            
+                            return true; // Sukces
+                        }
                         
-                        // Losowy błąd po znalezieniu (ekscytacja?)
-                        await errorSimulation.simulateRandomError();
-                        
-                        // Rejestruj sukces w systemie uczenia się
-                        behavioralLearning.recordSuccess('keyword_match', {
-                            keywords: matchResult.keywords,
-                            category: matchResult.category
-                        });
-                        
-                        return true; // Sukces
+                        return false; // Nie znaleziono keywordów
                     }
-                    
-                    return false; // Nie znaleziono keywordów
-                }
-            );
+                );
+            }, 'process_post', { postId: postData.externalId });
 
             if (result.shouldStop) {
                 console.log(`   🛑 Zatrzymano skanowanie po ${result.consecutiveKnown} znanych postach`);
@@ -396,6 +404,10 @@ async function scrapeFacebook(page, targetGroup = null) {
     // Pokaż końcowe statystyki Stateful Scanner
     const sessionReport = statefulScanner.generateSessionReport(groupName);
     console.log(`   ${sessionReport}`);
+    
+    // Pokaż status Fault Tolerance
+    const faultStatus = faultTolerance.getSystemStatus();
+    console.log(`   🛡️ Fault Tolerance: ${faultStatus.health.isHealthy ? '✅ Healthy' : '❌ Issues'} | Recoveries: ${faultStatus.recovery.totalRecoveries}`);
     
     // Oblicz i pokaż ryzyko sesji
     const sessionData = {
@@ -494,37 +506,51 @@ async function performRandomNavigation(page) {
 }
 
 /**
- * Główna funkcja z pętlą sesji
+ * Główna funkcja bota z distributed architecture
  */
 async function runBot() {
+    console.log('🚀 Uruchamianie Facebook Bot v2.0 z Distributed Architecture...');
+    
+    // Inicjalizuj Distributed Coordinator
+    const coordinator = new DistributedCoordinator(CONFIG.distributed || {});
+    await coordinator.initialize();
+    
     const sessionManager = new SessionManager(CONFIG);
-    
-    console.log('🚀 Uruchamiam FB Scanner Bot z pętlą sesji...');
-    
     let running = true;
     
     // Obsługa zamknięcia procesu
     process.on('SIGINT', async () => {
         console.log('🛑 Zatrzymywanie bota...');
         running = false;
+        await coordinator.shutdown();
         process.exit();
     });
 
     while (running) {
         try {
-            // Sprawdź czy powinno się pracować
-            if (!sessionManager.shouldWork()) {
-                // Czekaj do aktywnych godzin lub następnego dnia roboczego
-                await sessionManager.waitForActiveHours();
-                continue;
-            }
             
             // Losuj grupę docelową
             const targetGroup = getRandomGroup();
             console.log(`🎯 Sesja: ${targetGroup.name} (${targetGroup.url})`);
 
-            // Uruchom pojedynczą sesję scrapowania
-            await runSingleSession(targetGroup);
+            // Użyj distributed coordinator do wykonania zadania
+            if (coordinator.isCoordinator) {
+                // Jako koordynator, rozdziel zadanie
+                const task = {
+                    type: 'scrape_group',
+                    targetGroup: targetGroup,
+                    priority: 'normal',
+                    metadata: {
+                        timestamp: Date.now(),
+                        instanceId: coordinator.instanceId
+                    }
+                };
+                
+                await coordinator.distributeTask(task);
+            } else {
+                // Jako worker, wykonaj zadanie lokalnie
+                await runSingleSession(targetGroup, coordinator);
+            }
 
             // Czekaj losowy czas między sesjami
             if (running) {
@@ -536,13 +562,19 @@ async function runBot() {
             // Krótkie oczekiwanie po błędzie przed próbą ponowną
             await sleep(30000); // 30 sekund
         }
+        
+        // Pokaż statystyki co 10 sesji
+        if (Math.random() < 0.1) { // 10% szans
+            const stats = coordinator.getSystemStats();
+            console.log(`📊 Distributed Stats: ${stats.instances.length} instances, ${stats.tasks.successRate} success rate`);
+        }
     }
 }
 
 /**
  * Uruchamia pojedynczą sesję scrapowania
  */
-async function runSingleSession(targetGroup) {
+async function runSingleSession(targetGroup, coordinator = null) {
     let browser;
     const fingerprintManager = new DeviceFingerprint();
     const proxyManager = new ProxyRotation(CONFIG.proxy);

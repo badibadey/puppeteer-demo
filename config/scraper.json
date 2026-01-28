@@ -54,6 +54,22 @@
             "consecutiveKnownLimit": 3,
             "maxPostAgeHours": 24
         },
+        "faultTolerance": {
+            "maxRetries": 3,
+            "retryDelay": 5000,
+            "circuitBreakerThreshold": 5,
+            "circuitBreakerTimeout": 60000,
+            "healthCheckInterval": 30000,
+            "maxMemoryUsage": 2048,
+            "maxCpuUsage": 80
+        },
+        "distributed": {
+            "maxInstances": 5,
+            "healthCheckInterval": 30000,
+            "loadBalancingStrategy": "round_robin",
+            "instanceTimeout": 120000,
+            "sharedStatePath": "./shared-state"
+        },
         "humanDelaysConfig": "default"
     }
 }
