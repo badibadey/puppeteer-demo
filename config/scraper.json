@@ -49,6 +49,11 @@
             "days": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"],
             "weekendReduction": 0.7
         },
+        "stateTracking": {
+            "enabled": true,
+            "consecutiveKnownLimit": 3,
+            "maxPostAgeHours": 24
+        },
         "humanDelaysConfig": "default"
     }
 }

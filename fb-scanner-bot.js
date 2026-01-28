@@ -17,6 +17,13 @@ const HumanErrorSimulation = require('./lib/human-error-simulation');
 const CacheManager = require('./lib/cache-manager');
 const BehavioralLearning = require('./lib/behavioral-learning');
 const RiskPrediction = require('./lib/risk-prediction');
+const StatefulScanner = require('./lib/stateful-scanner');
+
+// Supabase client
+const { createClient } = require('@supabase/supabase-js');
+const supabaseUrl = process.env.SUPABASE_URL || 'https://your-project.supabase.co';
+const supabaseKey = process.env.SUPABASE_ANON_KEY || 'your-anon-key';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Konfiguracja
 puppeteer.use(StealthPlugin());
@@ -171,8 +178,17 @@ async function scrapeFacebook(page, targetGroup = null) {
     const cacheManager = new CacheManager('./cache');
     const behavioralLearning = new BehavioralLearning('./learning-data');
     const riskPrediction = new RiskPrediction();
+    const statefulScanner = new StatefulScanner(supabase, CONFIG);
 
-    // 1. Czekaj na feed i zrób wstępny scroll
+    // 1. Inicjalizuj Stateful Scanner
+    try {
+        await statefulScanner.initialize(groupName);
+    } catch (e) {
+        console.error('❌ Błąd inicjalizacji Stateful Scanner:', e);
+        console.log('⚠️ Kontynuowanie bez stateful scanning...');
+    }
+
+    // 2. Czekaj na feed i zrób wstępny scroll
     try {
         await page.waitForSelector('[role="feed"]', { timeout: 15000 });
         console.log('   ✅ Feed znaleziony');
@@ -189,7 +205,7 @@ async function scrapeFacebook(page, targetGroup = null) {
     await humanScroll(page);
     await sleep(2000);
 
-    // 4. Pobierz posty
+    // 3. Pobierz posty
     const particleHandles = await page.$$('[role="article"]');
     console.log(`   🔎 Znaleziono ${particleHandles.length} elementów (postów/reklam).`);
 
@@ -200,15 +216,13 @@ async function scrapeFacebook(page, targetGroup = null) {
 
     console.log(`   🎯 Limit postów na sesję: ${maxPosts}`);
     
-    // Pokaż statystyki cache
-    const cacheStats = cacheManager.getCacheStats();
-    console.log(`   📊 Cache: ${cacheStats.processedPosts} postów, ${cacheStats.visitedUrls} URL`);
+    // Resetuj statystyki Stateful Scanner
+    statefulScanner.resetSessionStats();
 
-    // Zbierz wszystkie dane postów najpierw
-    const allPostsData = [];
-    
+    // Przetwarzaj posty z Stateful Scanning
     for (const postHandle of particleHandles) {
-        if (allPostsData.length >= maxPosts) {
+        if (processedCount >= maxPosts) {
+            console.log(`   🛑 Osiągnięto limit postów na sesję: ${maxPosts}.`);
             break;
         }
 
@@ -220,7 +234,7 @@ async function scrapeFacebook(page, targetGroup = null) {
         
         // Rejestruj akcję w systemie uczenia się
         behavioralLearning.recordAction('process_post', { 
-            postIndex: allPostsData.length,
+            postIndex: processedCount,
             timestamp: Date.now()
         });
 
@@ -312,70 +326,80 @@ async function scrapeFacebook(page, targetGroup = null) {
             if (!postData.textContent || postData.textContent.length < 5) {
                 continue;
             }
-            if (!postData.url) {
+            if (!postData.url || !postData.externalId) {
                 continue;
             }
 
-            allPostsData.push(postData);
+            // Stateful Scanning - przetwarzaj post
+            const result = await statefulScanner.processPost(
+                groupName, 
+                postData.externalId, 
+                postData, 
+                async (data) => {
+                    // Analiza słów kluczowych
+                    const matchResult = matchKeywords(data.textContent);
+
+                    if (matchResult.matched) {
+                        console.log(`   🎯 TRAFIENIE: [${data.author}] "${data.title}"`);
+                        console.log(`      Keywords: ${matchResult.keywords.join(', ')}`);
+
+                        // Wyślij do n8n
+                        await sendToN8n({
+                            source: 'Facebook Group',
+                            groupName: groupName,
+                            ...data,
+                            post_url: data.url,
+                            content: data.textContent,
+                            matchedKeywords: matchResult.keywords,
+                            category: matchResult.category,
+                            scrapedAt: new Date().toISOString()
+                        });
+
+                        // Symuluj czytanie po znalezieniu
+                        await idleBehaviors.simulateReading(2000);
+                        
+                        // Losowy błąd po znalezieniu (ekscytacja?)
+                        await errorSimulation.simulateRandomError();
+                        
+                        // Rejestruj sukces w systemie uczenia się
+                        behavioralLearning.recordSuccess('keyword_match', {
+                            keywords: matchResult.keywords,
+                            category: matchResult.category
+                        });
+                        
+                        return true; // Sukces
+                    }
+                    
+                    return false; // Nie znaleziono keywordów
+                }
+            );
+
+            if (result.shouldStop) {
+                console.log(`   🛑 Zatrzymano skanowanie po ${result.consecutiveKnown} znanych postach`);
+                break;
+            }
+
+            if (result.isNew) {
+                processedCount++;
+            }
 
         } catch (err) {
             console.error('   ❌ Błąd przetwarzania posta:', err.message);
         }
 
         // Losowe zachowanie co kilka postów
-        if (allPostsData.length > 0 && allPostsData.length % 3 === 0) {
+        if (processedCount > 0 && processedCount % 3 === 0) {
             await idleBehaviors.simulateThinking();
         }
     }
 
-    // Filtruj duplikaty i przetwarzaj unikalne posty
-    console.log(`   🔍 Przetwarzam ${allPostsData.length} postów z filtrowaniem duplikatów...`);
-    
-    await cacheManager.processPostsWithDuplicateFilter(allPostsData, async (postData) => {
-        // Analiza słów kluczowych
-        const matchResult = matchKeywords(postData.textContent);
-
-        if (matchResult.matched) {
-            console.log(`   🎯 TRAFIENIE: [${postData.author}] "${postData.title}"`);
-            console.log(`      Keywords: ${matchResult.keywords.join(', ')}`);
-
-            // Wyślij do n8n
-            await sendToN8n({
-                source: 'Facebook Group',
-                groupName: groupName,
-                ...postData,
-                post_url: postData.url,
-                content: postData.textContent,
-                matchedKeywords: matchResult.keywords,
-                category: matchResult.category,
-                scrapedAt: new Date().toISOString()
-            });
-
-            // Symuluj czytanie po znalezieniu
-            await idleBehaviors.simulateReading(2000);
-            
-            // Losowy błąd po znalezieniu (ekscytacja?)
-            await errorSimulation.simulateRandomError();
-            
-            // Rejestruj sukces w systemie uczenia się
-            behavioralLearning.recordSuccess('keyword_match', {
-                keywords: matchResult.keywords,
-                category: matchResult.category
-            });
-            
-            return true; // Sukces
-        }
-        
-        return false; // Nie znaleziono keywordów
-    });
-
-    // Pokaż końcowe statystyki
-    const finalStats = cacheManager.getCacheStats();
-    console.log(`   📊 Końcowe statystyki cache: ${finalStats.processedPosts} postów, ${finalStats.visitedUrls} URL`);
+    // Pokaż końcowe statystyki Stateful Scanner
+    const sessionReport = statefulScanner.generateSessionReport(groupName);
+    console.log(`   ${sessionReport}`);
     
     // Oblicz i pokaż ryzyko sesji
     const sessionData = {
-        postsProcessed: allPostsData.length,
+        postsProcessed: processedCount,
         sessionDuration: Date.now() - behavioralLearning.currentSession.startTime,
         actionSpeed: behavioralLearning.currentSession.actions.length > 0 ? 
             (Date.now() - behavioralLearning.currentSession.startTime) / behavioralLearning.currentSession.actions.length : 0
