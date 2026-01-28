@@ -9,6 +9,14 @@ const {
     checkBanRisk,
     sleep
 } = require('./lib/human-behavior');
+const SessionManager = require('./lib/session-manager');
+const DeviceFingerprint = require('./lib/device-fingerprint');
+const HumanIdleBehaviors = require('./lib/human-idle-behaviors');
+const ProxyRotation = require('./lib/proxy-rotation');
+const HumanErrorSimulation = require('./lib/human-error-simulation');
+const CacheManager = require('./lib/cache-manager');
+const BehavioralLearning = require('./lib/behavioral-learning');
+const RiskPrediction = require('./lib/risk-prediction');
 
 // Konfiguracja
 puppeteer.use(StealthPlugin());
@@ -17,6 +25,18 @@ const CONFIG = require('./config/scraper.json');
 const KEYWORDS = require('./config/keywords.json');
 
 const SESSION_PATH = path.join(__dirname, 'fb-session', 'cookies.json');
+
+/**
+ * Losuje grupę docelową z dostępnej puli
+ */
+function getRandomGroup() {
+    if (CONFIG.groups && CONFIG.groups.length > 0) {
+        const randomIndex = Math.floor(Math.random() * CONFIG.groups.length);
+        return CONFIG.groups[randomIndex];
+    }
+    // Fallback do starej konfiguracji
+    return CONFIG.group;
+}
 
 /**
  * Ładuje ciasteczka z pliku
@@ -141,8 +161,16 @@ async function scrapeReddit(page) {
 /**
  * Logika scrapowania dla Facebooka
  */
-async function scrapeFacebook(page) {
+async function scrapeFacebook(page, targetGroup = null) {
+    const groupName = targetGroup ? targetGroup.name : CONFIG.group.name;
     console.log('👤 Tryb LIVE: Scrapowanie Facebooka...');
+    
+    // Inicjalizuj zachowania bezczynności
+    const idleBehaviors = new HumanIdleBehaviors(page);
+    const errorSimulation = new HumanErrorSimulation(page);
+    const cacheManager = new CacheManager('./cache');
+    const behavioralLearning = new BehavioralLearning('./learning-data');
+    const riskPrediction = new RiskPrediction();
 
     // 1. Czekaj na feed i zrób wstępny scroll
     try {
@@ -154,22 +182,47 @@ async function scrapeFacebook(page) {
         return;
     }
 
-    // Scrolluj trochę żeby załadować posty
+    // 2. Wykonaj losową ścieżkę nawigacji
+    await performRandomNavigation(page);
+
+    // 3. Scrolluj żeby załadować posty
     await humanScroll(page);
     await sleep(2000);
 
-    // 2. Pobierz posty
-    // FB używa role="article" dla postów
+    // 4. Pobierz posty
     const particleHandles = await page.$$('[role="article"]');
     console.log(`   🔎 Znaleziono ${particleHandles.length} elementów (postów/reklam).`);
 
     let processedCount = 0;
+    const maxPosts = typeof CONFIG.safety.maxPostsPerSession === 'object' 
+        ? Math.floor(Math.random() * (CONFIG.safety.maxPostsPerSession.max - CONFIG.safety.maxPostsPerSession.min + 1)) + CONFIG.safety.maxPostsPerSession.min
+        : CONFIG.safety.maxPostsPerSession;
 
+    console.log(`   🎯 Limit postów na sesję: ${maxPosts}`);
+    
+    // Pokaż statystyki cache
+    const cacheStats = cacheManager.getCacheStats();
+    console.log(`   📊 Cache: ${cacheStats.processedPosts} postów, ${cacheStats.visitedUrls} URL`);
+
+    // Zbierz wszystkie dane postów najpierw
+    const allPostsData = [];
+    
     for (const postHandle of particleHandles) {
-        if (processedCount >= CONFIG.safety.maxPostsPerSession) {
-            console.log('   🛑 Osiągnięto limit postów na sesję.');
+        if (allPostsData.length >= maxPosts) {
             break;
         }
+
+        // Losowe zachowanie bezczynności między postami
+        await idleBehaviors.performIdleAction();
+        
+        // Symuluj ludzkie błędy
+        await errorSimulation.simulateHumanErrors();
+        
+        // Rejestruj akcję w systemie uczenia się
+        behavioralLearning.recordAction('process_post', { 
+            postIndex: allPostsData.length,
+            timestamp: Date.now()
+        });
 
         try {
             // Ekstrakcja danych w kontekście strony
@@ -185,28 +238,24 @@ async function scrapeFacebook(page) {
                 let authorUrl = '';
 
                 // 1. Szukanie linku profilowego (najlepsza metoda)
-                // Linki do profili zwykle mają href z id użytkownika lub nazwą
                 const profileLink = Array.from(el.querySelectorAll('a')).find(a => {
                     const href = a.href;
-                    // Wykluczamy linki do hashtagów, postów, zdjęć
                     const isProfile = (href.includes('/user/') || href.includes('/groups/')) &&
                         !href.includes('/posts/') &&
                         !href.includes('/permalink/') &&
                         !href.includes('/photo');
 
-                    // Często nazwa autora jest wewnątrz strong lub span
                     return isProfile && (a.innerText.length > 2);
                 });
 
                 if (profileLink) {
                     authorUrl = profileLink.href;
-                    // Próbujemy wyciągnąć czysty tekst z linku
-                    author = profileLink.innerText.split('\n')[0].trim(); // Czasem jest tam też data
+                    author = profileLink.innerText.split('\n')[0].trim();
                 }
 
-                // 2. Fallback: Szukanie w nagłówkach (tytuł posta to często "Autor > Grupa" lub samo "Autor")
+                // 2. Fallback: Szukanie w nagłówkach
                 if (author === 'Nieznany' || !author) {
-                    const headerStrong = el.querySelector('strong'); // Często autor jest w pierwszym strongu
+                    const headerStrong = el.querySelector('strong');
                     if (headerStrong) {
                         author = headerStrong.innerText;
                     }
@@ -216,7 +265,6 @@ async function scrapeFacebook(page) {
                 if (author === 'Nieznany') {
                     const ariaElement = el.querySelector('[aria-label]');
                     if (ariaElement && ariaElement.getAttribute('aria-label').length < 50) {
-                        // Czasem aria-label to po prostu nazwa autora
                         author = ariaElement.getAttribute('aria-label');
                     }
                 }
@@ -230,21 +278,16 @@ async function scrapeFacebook(page) {
                     }
                 }
 
-                // --- TREŚĆ (Przywrócona) ---
+                // --- TREŚĆ ---
                 const contentNode = el.querySelector('[data-ad-comet-preview="message"]');
                 const content = contentNode ? contentNode.innerText : (el.innerText || '');
 
                 // --- URL POSTA & DATA ---
-                // URL Posta: szukanie linku z datą/czasem (hover na datę pokazuje permalink)
-                // Często ma aria-label zawierający czas np "1 godz."
                 const permalinkNode = Array.from(el.querySelectorAll('a')).find(a =>
                     a.href.includes('/posts/') || a.href.includes('/permalink/')
                 );
 
-                // Czasami URL jest ukryty, trzeba go wyciągnąć
                 const url = permalinkNode ? permalinkNode.href : '';
-
-                // Data - zazwyczaj w elemencie z permalinkiem
                 const postedAt = permalinkNode ? permalinkNode.innerText : new Date().toISOString();
 
                 // ID posta (z URL)
@@ -255,7 +298,7 @@ async function scrapeFacebook(page) {
                 }
 
                 return {
-                    title: content.substring(0, 50) + '...', // Tytuł to początek treści
+                    title: content.substring(0, 50) + '...',
                     textContent: content,
                     url: url,
                     externalId: externalId,
@@ -265,107 +308,312 @@ async function scrapeFacebook(page) {
                 };
             }, postHandle);
 
-            // Debug: Co widzi bot?
-            // console.log('   DEBUG Post Data:', JSON.stringify({
-            //    len: postData.textContent?.length,
-            //    url: postData.url?.substring(0, 30),
-            //    author: postData.author
-            // }));
-
-            // Walidacja - czy to faktycznie post (musi mieć autora i treść)
+            // Walidacja - czy to faktycznie post
             if (!postData.textContent || postData.textContent.length < 5) {
-                // console.log('   ⚠️ Pominięto: Zbyt krótka treść lub brak treści');
                 continue;
             }
             if (!postData.url) {
-                // console.log('   ⚠️ Pominięto: Brak URL');
                 continue;
             }
 
-            // Analiza słów kluczowych
-            const matchResult = matchKeywords(postData.textContent);
-
-            if (matchResult.matched) {
-                console.log(`   🎯 TRAFIENIE: [${postData.author}] "${postData.title}"`);
-                console.log(`      Keywords: ${matchResult.keywords.join(', ')}`);
-
-                // Wyślij do n8n
-                await sendToN8n({
-                    source: 'Facebook Group',
-                    groupName: CONFIG.group.name,
-                    ...postData,
-                    post_url: postData.url,     // Mapowanie dla n8n/Supabase
-                    content: postData.textContent, // Mapowanie dla n8n/Supabase
-                    matchedKeywords: matchResult.keywords,
-                    category: matchResult.category,
-                    scrapedAt: new Date().toISOString()
-                });
-                processedCount++;
-            }
+            allPostsData.push(postData);
 
         } catch (err) {
             console.error('   ❌ Błąd przetwarzania posta:', err.message);
-            // Ignoruj błędy pojedynczych postów (np. reklamy, inne struktury)
+        }
+
+        // Losowe zachowanie co kilka postów
+        if (allPostsData.length > 0 && allPostsData.length % 3 === 0) {
+            await idleBehaviors.simulateThinking();
+        }
+    }
+
+    // Filtruj duplikaty i przetwarzaj unikalne posty
+    console.log(`   🔍 Przetwarzam ${allPostsData.length} postów z filtrowaniem duplikatów...`);
+    
+    await cacheManager.processPostsWithDuplicateFilter(allPostsData, async (postData) => {
+        // Analiza słów kluczowych
+        const matchResult = matchKeywords(postData.textContent);
+
+        if (matchResult.matched) {
+            console.log(`   🎯 TRAFIENIE: [${postData.author}] "${postData.title}"`);
+            console.log(`      Keywords: ${matchResult.keywords.join(', ')}`);
+
+            // Wyślij do n8n
+            await sendToN8n({
+                source: 'Facebook Group',
+                groupName: groupName,
+                ...postData,
+                post_url: postData.url,
+                content: postData.textContent,
+                matchedKeywords: matchResult.keywords,
+                category: matchResult.category,
+                scrapedAt: new Date().toISOString()
+            });
+
+            // Symuluj czytanie po znalezieniu
+            await idleBehaviors.simulateReading(2000);
+            
+            // Losowy błąd po znalezieniu (ekscytacja?)
+            await errorSimulation.simulateRandomError();
+            
+            // Rejestruj sukces w systemie uczenia się
+            behavioralLearning.recordSuccess('keyword_match', {
+                keywords: matchResult.keywords,
+                category: matchResult.category
+            });
+            
+            return true; // Sukces
+        }
+        
+        return false; // Nie znaleziono keywordów
+    });
+
+    // Pokaż końcowe statystyki
+    const finalStats = cacheManager.getCacheStats();
+    console.log(`   📊 Końcowe statystyki cache: ${finalStats.processedPosts} postów, ${finalStats.visitedUrls} URL`);
+    
+    // Oblicz i pokaż ryzyko sesji
+    const sessionData = {
+        postsProcessed: allPostsData.length,
+        sessionDuration: Date.now() - behavioralLearning.currentSession.startTime,
+        actionSpeed: behavioralLearning.currentSession.actions.length > 0 ? 
+            (Date.now() - behavioralLearning.currentSession.startTime) / behavioralLearning.currentSession.actions.length : 0
+    };
+    
+    const riskScore = riskPrediction.calculateRiskScore(sessionData);
+    const riskReport = riskPrediction.getRiskReport();
+    
+    console.log(`   🚨 Wynik ryzyka: ${(riskScore * 100).toFixed(1)}% (${riskReport.riskLevel})`);
+    
+    if (riskReport.alerts.length > 0) {
+        console.log(`   ⚠️ Alerty: ${riskReport.alerts.map(a => a.message).join(', ')}`);
+    }
+    
+    // Zakończ sesję uczenia się
+    behavioralLearning.endSession(true, false);
+    
+    // Pokaż statystyki uczenia się
+    const learningStats = behavioralLearning.getLearningStats();
+    console.log(`   🧠 Statystyki uczenia: ${learningStats.sessions} sesji, ${(learningStats.successRate * 100).toFixed(1)}% success rate`);
+    
+    // Zastosuj działania mitigacyjne jeśli potrzebne
+    if (riskReport.mitigationActions.length > 0) {
+        console.log(`   🛡️ Działania mitigacyjne: ${riskReport.mitigationActions.map(a => a.description).join(', ')}`);
+    }
+}
+
+/**
+ * Wykonuje losową ścieżkę nawigacji w grupie
+ */
+async function performRandomNavigation(page) {
+    const paths = [
+        // Ścieżka 1: Przeglądaj posty
+        async () => {
+            console.log('   🛤️ Ścieżka: Przeglądanie postów');
+            await humanScroll(page);
+            await sleep(humanDelay('readingTime'));
+        },
+        
+        // Ścieżka 2: Sprawdź członków
+        async () => {
+            console.log('   🛤️ Ścieżka: Sprawdzanie członków');
+            try {
+                const membersLink = await page.$('a[href*="members"]');
+                if (membersLink) {
+                    await humanClick(page, 'a[href*="members"]');
+                    await sleep(2000);
+                    await humanScroll(page);
+                    await sleep(1000);
+                    // Wróć do głównego feedu
+                    await page.goBack();
+                    await sleep(1000);
+                }
+            } catch (e) {
+                console.log('   ⚠️ Nie udało się sprawdzić członków');
+            }
+        },
+        
+        // Ścieżka 3: Przeglądaj z zakładką "About"
+        async () => {
+            console.log('   🛤️ Ścieżka: Sprawdzanie informacji o grupie');
+            try {
+                const aboutLink = await page.$('a[href*="about"]');
+                if (aboutLink) {
+                    await humanClick(page, 'a[href*="about"]');
+                    await sleep(2000);
+                    await humanScroll(page);
+                    await sleep(1000);
+                    await page.goBack();
+                    await sleep(1000);
+                }
+            } catch (e) {
+                console.log('   ⚠️ Nie udało się sprawdzić informacji o grupie');
+            }
+        },
+        
+        // Ścieżka 4: Losowe scrollowanie w różnych miejscach
+        async () => {
+            console.log('   🛤️ Ścieżka: Losowe eksplorowanie');
+            for (let i = 0; i < 3; i++) {
+                await humanScroll(page);
+                if (Math.random() > 0.5) {
+                    await sleep(humanDelay('readingTime'));
+                }
+            }
+        }
+    ];
+
+    // Wybierz losową ścieżkę
+    const randomPath = paths[Math.floor(Math.random() * paths.length)];
+    await randomPath();
+}
+
+/**
+ * Główna funkcja z pętlą sesji
+ */
+async function runBot() {
+    const sessionManager = new SessionManager(CONFIG);
+    
+    console.log('🚀 Uruchamiam FB Scanner Bot z pętlą sesji...');
+    
+    let running = true;
+    
+    // Obsługa zamknięcia procesu
+    process.on('SIGINT', async () => {
+        console.log('🛑 Zatrzymywanie bota...');
+        running = false;
+        process.exit();
+    });
+
+    while (running) {
+        try {
+            // Sprawdź czy powinno się pracować
+            if (!sessionManager.shouldWork()) {
+                // Czekaj do aktywnych godzin lub następnego dnia roboczego
+                await sessionManager.waitForActiveHours();
+                continue;
+            }
+            
+            // Losuj grupę docelową
+            const targetGroup = getRandomGroup();
+            console.log(`🎯 Sesja: ${targetGroup.name} (${targetGroup.url})`);
+
+            // Uruchom pojedynczą sesję scrapowania
+            await runSingleSession(targetGroup);
+
+            // Czekaj losowy czas między sesjami
+            if (running) {
+                await sessionManager.waitForInterval('między sesjami');
+            }
+
+        } catch (error) {
+            console.error('❌ Błąd w pętli sesji:', error);
+            // Krótkie oczekiwanie po błędzie przed próbą ponowną
+            await sleep(30000); // 30 sekund
         }
     }
 }
 
 /**
- * Główna funkcja
+ * Uruchamia pojedynczą sesję scrapowania
  */
-async function runBot() {
-    console.log('🚀 Uruchamiam FB Scanner Bot...');
-    console.log(`🎯 Cel: ${CONFIG.group.name}`);
-
+async function runSingleSession(targetGroup) {
     let browser;
+    const fingerprintManager = new DeviceFingerprint();
+    const proxyManager = new ProxyRotation(CONFIG.proxy);
+    
     try {
-        browser = await puppeteer.launch({
-            // Używamy systemowego Chrome - rozwiązuje problem crasha na macOS
-            // Oraz jest BEZPIECZNIEJSZE dla FB (prawdziwa sygnatura przeglądarki)
+        // Generuj losowy fingerprint dla tej sesji
+        const fingerprint = fingerprintManager.generateFingerprint();
+        
+        // Pobierz proxy (jeśli włączone)
+        const proxy = CONFIG.proxy.enabled ? proxyManager.getNextProxy() : null;
+        
+        // Konfiguruj opcje Puppeteer z proxy
+        let puppeteerOptions = {
             executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-            headless: false, // Dla bezpieczeństwa session i unikania detekcji lepiej użyć headed lub "new"
+            headless: false,
             args: [
                 '--disable-infobars',
                 '--window-position=0,0',
                 '--ignore-certificate-errors',
                 '--ignore-certificate-errors-spki-list',
+                '--disable-blink-features=AutomationControlled',
+                '--disable-features=IsolateOrigins,site-per-process',
             ]
-        });
-    } catch (err) {
-        console.error('❌ Błąd uruchamiania puppeteer.launch:', err);
-        return;
-    }
+        };
 
-    try {
+        if (CONFIG.proxy.enabled) {
+            puppeteerOptions = await proxyManager.configurePuppeteerWithProxy(puppeteerOptions, proxy);
+        }
+
+        browser = await puppeteer.launch(puppeteerOptions);
         const page = await browser.newPage();
 
-        // Ukryj WebDriver
+        // Aplikuj fingerprint urządzenia
+        await fingerprintManager.applyFingerprint(page, fingerprint);
+
+        // Ustaw losowe headers
+        const randomHeaders = proxyManager.getRandomHeaders();
+        await page.setExtraHTTPHeaders(randomHeaders);
+
+        // Symuluj warunki sieciowe
+        if (CONFIG.proxy.networkConditions) {
+            await proxyManager.simulateNetworkConditions(page, CONFIG.proxy.networkConditions);
+        }
+
+        // Dodatkowe ukrycie WebDriver
         await page.evaluateOnNewDocument(() => {
             Object.defineProperty(navigator, 'webdriver', { get: () => false });
+            delete navigator.__proto__.webdriver;
+            delete window.chrome.runtime;
         });
+
+        // Testuj proxy (jeśli włączone i skonfigurowane)
+        if (CONFIG.proxy.enabled && proxy && CONFIG.proxy.testOnStartup) {
+            const proxyWorks = await proxyManager.testProxy(browser, proxy);
+            if (!proxyWorks) {
+                proxyManager.markProxyFailed(proxy);
+                throw new Error(`Proxy test failed: ${proxy}`);
+            }
+        }
 
         // Załaduj cookies
         await loadCookies(page);
 
         // Wejdź na stronę
-        console.log(`🔗 Nawigacja do: ${CONFIG.group.url}`);
-        await page.goto(CONFIG.group.url, { waitUntil: 'networkidle2', timeout: 60000 });
+        console.log(`🔗 Nawigacja do: ${targetGroup.url}`);
+        if (proxy) {
+            console.log(`🌐 Używam proxy: ${proxy}`);
+        }
+        
+        await page.goto(targetGroup.url, { waitUntil: 'networkidle2', timeout: 60000 });
 
         // Losowe opóźnienie "rozruchowe"
         await sleep(humanDelay('afterPageLoad'));
 
         // Wybór trybu
-        if (CONFIG.group.isMock || CONFIG.group.url.includes('reddit')) {
+        if (targetGroup.isMock || targetGroup.url.includes('reddit')) {
             await scrapeReddit(page);
         } else {
-            await scrapeFacebook(page);
+            await scrapeFacebook(page, targetGroup);
         }
 
+        console.log('✅ Sesja zakończona sukcesem');
+
     } catch (error) {
-        console.error('❌ Krytyczny błąd bota (runtime):', error);
+        console.error('❌ Błąd sesji:', error);
+        
+        // Oznacz proxy jako niedziałające jeśli błąd sieciowy
+        if (CONFIG.proxy.enabled && error.message.includes('proxy') || error.message.includes('timeout')) {
+            const proxy = proxyManager.getNextProxy();
+            proxyManager.markProxyFailed(proxy);
+        }
+        
     } finally {
         if (browser) {
-            console.log('🔒 Zamykam sesję...');
+            console.log('🔒 Zamykam przeglądarkę...');
             await browser.close();
         }
     }

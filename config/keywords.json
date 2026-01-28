@@ -37,29 +37,6 @@
                 "numer pesel"
             ],
             "responseTemplate": "Pomagamy w uzyskaniu numeru PESEL..."
-        },
-        "testowe_ogolne": {
-            "keywords": [
-                "i",
-                "w",
-                "z",
-                "na",
-                "do",
-                "jak",
-                "gdzie",
-                "co",
-                "prosze",
-                "pomoc",
-                "kto",
-                "kiedy",
-                "czy",
-                "się",
-                "jest",
-                "są",
-                "mam",
-                "szukam"
-            ],
-            "responseTemplate": "To jest kategoria testowa łapiąca prawie wszystko."
         }
     }
 }
